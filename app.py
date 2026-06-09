@@ -38,7 +38,7 @@ with st.sidebar:
     )
     top_k = st.slider("Número de resultados", min_value=1, max_value=10, value=5)
     st.caption(
-        "El modo básico funciona sin API ni LLM. El modo semántico usa embeddings "
+        "El modo semántico usa embeddings."
         "locales y tampoco envía las descripciones a un servicio externo."
     )
 
