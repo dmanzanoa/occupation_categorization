@@ -6,8 +6,7 @@ descripción y una frase de evidencia con las palabras coincidentes resaltadas.
 
 ## Enfoque
 
-Este problema es de **recuperación de información / clasificación semántica**, no
-necesita un agente. La aplicación ofrece dos modos:
+Este problema es de **recuperación de información / clasificación semántica**. La aplicación ofrece dos modos:
 
 - **Léxico (offline):** BM25 sobre etiqueta preferida, etiquetas alternativas y
   descripción, más cobertura de términos de la consulta y evaluación por frases.
@@ -18,10 +17,6 @@ necesita un agente. La aplicación ofrece dos modos:
 - **Híbrido:** combina BM25 (35 %) con embeddings multilingües (65 %) usando
   `paraphrase-multilingual-MiniLM-L12-v2`. Es mejor para expresiones con pocas
   palabras exactas en común.
-
-Un LLM podría reranquear los primeros resultados más adelante, pero no conviene
-usarlo como fuente de códigos ESCO: aumenta costo y variabilidad, y puede inventar
-categorías. La lista cerrada del CSV debe seguir siendo la fuente de verdad.
 
 ## Requisitos
 
