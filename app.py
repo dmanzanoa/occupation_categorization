@@ -17,13 +17,16 @@ st.set_page_config(page_title="Clasificador de ocupaciones ESCO")
 
 @st.cache_resource(show_spinner="Construyendo el índice de ocupaciones...")
 def get_matcher(use_semantic: bool) -> EscoMatcher:
-    return EscoMatcher(ROOT / "data" / "data_oc.csv", use_semantic=use_semantic)
+    return EscoMatcher(
+        ROOT / "data" / "codes_enriched.json", use_semantic=use_semantic
+    )
 
 
 st.title("Clasificador de ocupaciones ESCO")
 st.write(
     "Describe libremente tu trabajo en español. El sistema devolverá las "
-    "ocupaciones ESCO más cercanas y una frase de evidencia para revisarlas."
+    "ocupaciones ESCO más cercanas, sus códigos relacionados CIUO/Chile y "
+    "una frase de evidencia para revisarlas."
 )
 
 with st.sidebar:
@@ -71,11 +74,17 @@ if st.button("Buscar ocupación", type="primary", use_container_width=True):
                 left, right = st.columns(2)
                 left.metric("Código ESCO", result.code)
                 right.metric("Puntaje de similitud", f"{result.score:.1%}")
+                if result.ciuo08_code:
+                    st.markdown(
+                        f"**CIUO-08:** `{result.ciuo08_code}` - {result.ciuo08_label}"
+                    )
+                if result.ciuo08_cl_path:
+                    st.markdown(f"**CIUO-08 CL:** {result.ciuo08_cl_path}")
                 st.markdown("**Evidencia en la descripción ESCO**")
                 st.markdown(result.evidence_html, unsafe_allow_html=True)
                 with st.expander("Ver detalles"):
                     st.write(result.description)
-                    st.write("Jerarquía:", " › ".join(result.hierarchy) or "No disponible")
+                    st.write("Códigos unidos:", result.joined_codes)
                     st.write(f"Puntaje léxico: {result.lexical_score:.3f}")
                     if result.semantic_score is not None:
                         st.write(f"Puntaje semántico: {result.semantic_score:.3f}")

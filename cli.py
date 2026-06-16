@@ -19,12 +19,17 @@ def main() -> None:
     arguments = parser.parse_args()
 
     matcher = EscoMatcher(
-        ROOT / "data" / "data_oc.csv", use_semantic=arguments.semantic
+        ROOT / "data" / "codes_enriched.json", use_semantic=arguments.semantic
     )
     for position, result in enumerate(
         matcher.search(arguments.description, arguments.top_k), start=1
     ):
         print(f"{position}. {result.label} [{result.code}] - {result.score:.3f}")
+        if result.ciuo08_code:
+            print(f"   CIUO-08: {result.ciuo08_code} - {result.ciuo08_label}")
+        if result.ciuo08_cl_path:
+            print(f"   CIUO-08 CL: {result.ciuo08_cl_path}")
+        print(f"   Códigos unidos: {result.joined_codes}")
         print(f"   {result.description}\n")
 
 

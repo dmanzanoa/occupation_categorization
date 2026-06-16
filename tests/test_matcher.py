@@ -4,12 +4,14 @@ from pathlib import Path
 import sys
 import unittest
 
+import numpy as np
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from esco_matcher import EscoMatcher  # noqa: E402
-from esco_matcher.data import load_esco_csv  # noqa: E402
+from esco_matcher.data import load_enriched_json, load_esco_csv  # noqa: E402
 from esco_matcher.text import highlighted_html, tokenize  # noqa: E402
 
 
@@ -17,12 +19,29 @@ class EscoMatcherTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.csv_path = ROOT / "data" / "data_oc.csv"
-        cls.matcher = EscoMatcher(cls.csv_path)
+        cls.json_path = ROOT / "data" / "codes_enriched.json"
+        cls.matcher = EscoMatcher(cls.json_path)
 
     def test_loads_windows_encoded_csv_and_preserves_accents(self) -> None:
         frame = load_esco_csv(self.csv_path)
         self.assertEqual(len(frame), 3039)
         self.assertIn("Ejército", frame.iloc[0]["preferredLabel_esp"])
+
+    def test_loads_enriched_json_and_joins_codes(self) -> None:
+        frame = load_enriched_json(self.json_path)
+        self.assertEqual(len(frame), 3039)
+        row = frame.loc[frame["code"].eq("7231.10")].iloc[0]
+        self.assertEqual(row["ciuo08_code"], "7231")
+        self.assertIn("ESCO:7231.10", row["joined_codes"])
+        self.assertIn("CIUO08:7231", row["joined_codes"])
+        self.assertIn("CIUO08_CL:", row["joined_codes"])
+
+    def test_match_result_exposes_joined_codes(self) -> None:
+        result = self.matcher.search(
+            "Diagnostica, mantiene y repara vehículos y motores.", top_k=5
+        )[0]
+        self.assertTrue(result.joined_codes.startswith("ESCO:"))
+        self.assertTrue(result.ciuo08_cl_path)
 
     def test_electrician_description_returns_relevant_result(self) -> None:
         results = self.matcher.search(
@@ -59,6 +78,15 @@ class EscoMatcherTest(unittest.TestCase):
         )
         self.assertEqual(results[0].code, "5414.1")
 
+    def test_receptionist_description_prefers_general_receptionist(self) -> None:
+        results = self.matcher.search(
+            "Atiende a visitantes y clientes, responde llamadas telefónicas, coordina "
+            "citas y proporciona información. Es la primera persona de contacto en "
+            "empresas, hoteles, clínicas y otras organizaciones.",
+            top_k=5,
+        )
+        self.assertEqual(results[0].code, "4226.1")
+
     def test_welder_description_prefers_general_welder(self) -> None:
         results = self.matcher.search(
             "Realiza la unión y reparación de piezas metálicas utilizando diferentes "
@@ -69,14 +97,85 @@ class EscoMatcherTest(unittest.TestCase):
         )
         self.assertEqual(results[0].code, "7212.3")
 
-    def test_automotive_description_retrieves_general_vehicle_mechanic(self) -> None:
+    def test_semantic_score_does_not_demote_strong_lexical_welder_match(self) -> None:
+        construction_index = self.matcher.frame.index[
+            self.matcher.frame["code"].eq("2142.1.2")
+        ][0]
+        welder_index = self.matcher.frame.index[self.matcher.frame["code"].eq("7212.3")][0]
+        semantic = np.zeros(len(self.matcher.frame))
+        semantic[construction_index] = 0.99
+        semantic[welder_index] = 0.10
+        original_semantic_scores = self.matcher._semantic_scores
+        self.matcher._semantic_scores = lambda query: semantic
+        try:
+            results = self.matcher.search(
+                "Realiza la unión y reparación de piezas metálicas utilizando diferentes "
+                "técnicas de soldadura. Trabaja en industrias, construcciones, talleres y "
+                "proyectos de infraestructura, asegurando que las estructuras sean "
+                "resistentes y seguras.",
+                top_k=3,
+            )
+        finally:
+            self.matcher._semantic_scores = original_semantic_scores
+        self.assertEqual(results[0].code, "7212.3")
+
+    def test_automotive_description_prefers_general_vehicle_mechanic(self) -> None:
         results = self.matcher.search(
             "Diagnostica, mantiene y repara vehículos. Se encarga de sistemas "
             "mecánicos, eléctricos y electrónicos para garantizar el correcto "
             "funcionamiento y la seguridad de los automóviles.",
             top_k=5,
         )
-        self.assertIn("7231.10", [result.code for result in results])
+        self.assertEqual(results[0].code, "7231.10")
+
+    def test_semantic_score_does_not_demote_general_vehicle_mechanic(self) -> None:
+        electrician_index = self.matcher.frame.index[
+            self.matcher.frame["code"].eq("7412.2")
+        ][0]
+        mechanic_index = self.matcher.frame.index[
+            self.matcher.frame["code"].eq("7231.10")
+        ][0]
+        semantic = np.zeros(len(self.matcher.frame))
+        semantic[electrician_index] = 0.99
+        semantic[mechanic_index] = 0.10
+        original_semantic_scores = self.matcher._semantic_scores
+        self.matcher._semantic_scores = lambda query: semantic
+        try:
+            results = self.matcher.search(
+                "Diagnostica, mantiene y repara vehículos. Se encarga de sistemas "
+                "mecánicos, eléctricos y electrónicos para garantizar el correcto "
+                "funcionamiento y la seguridad de los automóviles.",
+                top_k=3,
+            )
+        finally:
+            self.matcher._semantic_scores = original_semantic_scores
+        self.assertEqual(results[0].code, "7231.10")
+
+    def test_semantic_rerank_is_restricted_to_lexical_candidates(self) -> None:
+        query = (
+            "Realiza la unión y reparación de piezas metálicas utilizando diferentes "
+            "técnicas de soldadura."
+        )
+        query_tokens = tokenize(query)
+        lexical = self.matcher._lexical_scores(query_tokens)
+        lexical_top20 = set(np.argsort(lexical)[::-1][:20])
+        outside_index = next(
+            index
+            for index, code in enumerate(self.matcher.frame["code"])
+            if index not in lexical_top20 and code != "7212.3"
+        )
+        semantic = np.zeros(len(self.matcher.frame))
+        semantic[outside_index] = 1.0
+        original_semantic_scores = self.matcher._semantic_scores
+        self.matcher._semantic_scores = lambda query: semantic
+        try:
+            results = self.matcher.search(query, top_k=5)
+        finally:
+            self.matcher._semantic_scores = original_semantic_scores
+        self.assertNotIn(
+            self.matcher.frame.iloc[outside_index]["code"],
+            [result.code for result in results],
+        )
 
 
 if __name__ == "__main__":
