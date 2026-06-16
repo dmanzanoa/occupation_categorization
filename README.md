@@ -62,8 +62,8 @@ metadatos de salida y no como señal principal del ranking.
 Clonar el repositorio y entrar en su carpeta:
 
 ```bash
-git clone https://github.com/dmanzanoa/occupation_categorization-v2.git
-cd occupation_categorization-v2
+git clone https://github.com/dmanzanoa/occupation_categorization.git
+cd occupation_categorization
 ```
 
 Crear y activar un entorno virtual:
