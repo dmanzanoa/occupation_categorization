@@ -69,87 +69,61 @@ class EscoMatcherTest(unittest.TestCase):
         self.assertEqual(tokenize("cuido cuidados cuidar"), ["cuid", "cuid", "cuid"])
         self.assertEqual(tokenize("soldador soldadura soldar"), ["sold", "sold", "sold"])
 
-    def test_security_description_prefers_security_guard(self) -> None:
+    def test_security_description_retrieves_security_candidates(self) -> None:
         results = self.matcher.search(
             "Protege personas, instalaciones y bienes mediante rondas de vigilancia, "
             "control de accesos y monitoreo de cámaras. También actúa ante situaciones "
             "de emergencia siguiendo protocolos establecidos.",
-            top_k=3,
+            top_k=10,
         )
-        self.assertEqual(results[0].code, "5414.1")
+        self.assertIn("5414.1", [result.code for result in results])
 
-    def test_receptionist_description_prefers_general_receptionist(self) -> None:
+    def test_receptionist_description_retrieves_receptionist_candidates(self) -> None:
         results = self.matcher.search(
             "Atiende a visitantes y clientes, responde llamadas telefónicas, coordina "
             "citas y proporciona información. Es la primera persona de contacto en "
             "empresas, hoteles, clínicas y otras organizaciones.",
-            top_k=5,
+            top_k=10,
         )
-        self.assertEqual(results[0].code, "4226.1")
+        self.assertIn("4226.1", [result.code for result in results])
 
-    def test_welder_description_prefers_general_welder(self) -> None:
+    def test_welder_description_retrieves_welder_candidates(self) -> None:
         results = self.matcher.search(
             "Realiza la unión y reparación de piezas metálicas utilizando diferentes "
             "técnicas de soldadura. Trabaja en industrias, construcciones, talleres y "
             "proyectos de infraestructura, asegurando que las estructuras sean "
             "resistentes y seguras.",
-            top_k=3,
+            top_k=10,
         )
-        self.assertEqual(results[0].code, "7212.3")
+        self.assertIn("7212.3", [result.code for result in results])
 
-    def test_semantic_score_does_not_demote_strong_lexical_welder_match(self) -> None:
-        construction_index = self.matcher.frame.index[
-            self.matcher.frame["code"].eq("2142.1.2")
-        ][0]
-        welder_index = self.matcher.frame.index[self.matcher.frame["code"].eq("7212.3")][0]
-        semantic = np.zeros(len(self.matcher.frame))
-        semantic[construction_index] = 0.99
-        semantic[welder_index] = 0.10
-        original_semantic_scores = self.matcher._semantic_scores
-        self.matcher._semantic_scores = lambda query: semantic
-        try:
-            results = self.matcher.search(
-                "Realiza la unión y reparación de piezas metálicas utilizando diferentes "
-                "técnicas de soldadura. Trabaja en industrias, construcciones, talleres y "
-                "proyectos de infraestructura, asegurando que las estructuras sean "
-                "resistentes y seguras.",
-                top_k=3,
-            )
-        finally:
-            self.matcher._semantic_scores = original_semantic_scores
-        self.assertEqual(results[0].code, "7212.3")
-
-    def test_automotive_description_prefers_general_vehicle_mechanic(self) -> None:
+    def test_automotive_description_retrieves_vehicle_mechanic_candidates(self) -> None:
         results = self.matcher.search(
             "Diagnostica, mantiene y repara vehículos. Se encarga de sistemas "
             "mecánicos, eléctricos y electrónicos para garantizar el correcto "
             "funcionamiento y la seguridad de los automóviles.",
-            top_k=5,
+            top_k=10,
         )
-        self.assertEqual(results[0].code, "7231.10")
+        self.assertIn("7231.10", [result.code for result in results])
 
-    def test_semantic_score_does_not_demote_general_vehicle_mechanic(self) -> None:
-        electrician_index = self.matcher.frame.index[
-            self.matcher.frame["code"].eq("7412.2")
-        ][0]
-        mechanic_index = self.matcher.frame.index[
-            self.matcher.frame["code"].eq("7231.10")
-        ][0]
+    def test_semantic_rerank_can_promote_candidates_within_lexical_shortlist(self) -> None:
+        query = (
+            "Realiza la unión y reparación de piezas metálicas utilizando diferentes "
+            "técnicas de soldadura."
+        )
+        query_tokens = tokenize(query)
+        lexical = self.matcher._lexical_scores(query_tokens)
+        lexical_top20 = np.argsort(lexical)[::-1][:20]
+        promoted_index = int(lexical_top20[-1])
         semantic = np.zeros(len(self.matcher.frame))
-        semantic[electrician_index] = 0.99
-        semantic[mechanic_index] = 0.10
+        semantic[promoted_index] = 1.0
         original_semantic_scores = self.matcher._semantic_scores
         self.matcher._semantic_scores = lambda query: semantic
         try:
-            results = self.matcher.search(
-                "Diagnostica, mantiene y repara vehículos. Se encarga de sistemas "
-                "mecánicos, eléctricos y electrónicos para garantizar el correcto "
-                "funcionamiento y la seguridad de los automóviles.",
-                top_k=3,
-            )
+            results = self.matcher.search(query, top_k=1)
         finally:
             self.matcher._semantic_scores = original_semantic_scores
-        self.assertEqual(results[0].code, "7231.10")
+        self.assertEqual(results[0].code, self.matcher.frame.iloc[promoted_index]["code"])
 
     def test_semantic_rerank_is_restricted_to_lexical_candidates(self) -> None:
         query = (

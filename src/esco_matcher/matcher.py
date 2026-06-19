@@ -162,76 +162,6 @@ class EscoMatcher:
             + 0.25 * label_scores
             + 0.15 * coverage_scores
         )
-        vehicle_terms = {
-            "automovil",
-            "automotriz",
-            "vehicul",
-            "coch",
-            "camion",
-            "furgonet",
-            "motociclet",
-        }
-        if "mecanic" in query_terms and query_terms.intersection(vehicle_terms):
-            for alias_index, owner in enumerate(self.alias_owners):
-                alias_terms = set(self.alias_tokens[alias_index])
-                if "mecanic" in alias_terms and alias_terms.intersection(vehicle_terms):
-                    lexical[owner] += 0.30
-        reception_context = query_terms.intersection({"visit", "client"}) and (
-            query_terms.intersection(
-                {"contact", "inform", "respond", "llam", "telefonic", "citas"}
-            )
-        )
-        if reception_context:
-            organization_context = query_terms.intersection(
-                {"empres", "hotel", "clinic", "organiz"}
-            )
-            for alias_index, owner in enumerate(self.alias_owners):
-                alias_terms = set(self.alias_tokens[alias_index])
-                if "recepcion" in alias_terms:
-                    lexical[owner] += 0.12
-                    if str(self.frame.iloc[owner].get("ciuo08_code", "")) == "4226":
-                        lexical[owner] += 0.12
-                    if (
-                        str(self.frame.iloc[owner].get("code", "")) == "4226.1"
-                        and len(organization_context) >= 2
-                    ):
-                        lexical[owner] += 0.25
-                    if len(organization_context) >= 2 and alias_terms.intersection(
-                        {"hotel", "veterinari", "medic", "restaurant"}
-                    ):
-                        lexical[owner] -= 0.12
-            if len(organization_context) >= 2:
-                general_reception = self.frame.index[
-                    self.frame["code"].eq("4226.1")
-                ]
-                if len(general_reception):
-                    reception_family = self.frame["code"].astype(str).str.startswith(
-                        ("4224", "4226", "5131")
-                    )
-                    family_best = float(lexical[reception_family].max())
-                    general_index = int(general_reception[0])
-                    lexical[general_index] = min(
-                        1.0, max(lexical[general_index], family_best)
-                    )
-                    for index in np.where(reception_family)[0]:
-                        if index != general_index:
-                            lexical[index] = min(
-                                lexical[index], lexical[general_index] - 0.001
-                            )
-        security_context = query_terms.intersection({"proteg", "vigil", "rond", "camar"})
-        if security_context and "acces" in query_terms:
-            for alias_index, owner in enumerate(self.alias_owners):
-                alias_terms = set(self.alias_tokens[alias_index])
-                if {"vigilante", "segur"}.issubset(alias_terms):
-                    lexical[owner] += 0.12
-            if len(security_context) >= 2:
-                general_guard = self.frame.index[self.frame["code"].eq("5414.1")]
-                if len(general_guard):
-                    guard_family = self.frame["code"].astype(str).str.startswith("5414")
-                    family_best = float(lexical[guard_family].max())
-                    lexical[int(general_guard[0])] = max(
-                        lexical[int(general_guard[0])], family_best + 0.001
-                    )
         return np.clip(lexical, 0, 1)
 
     def _semantic_scores(self, query: str) -> np.ndarray | None:
@@ -242,47 +172,6 @@ class EscoMatcher:
         )[0]
         similarities = self.semantic_embeddings @ query_embedding
         return np.clip((similarities + 1) / 2, 0, 1)
-
-    def _prefer_general_roles_for_broad_context(
-        self, scores: np.ndarray, query_tokens: list[str]
-    ) -> np.ndarray:
-        adjusted = scores.copy()
-        query_terms = set(query_tokens)
-
-        reception_context = query_terms.intersection({"visit", "client"}) and (
-            query_terms.intersection(
-                {"contact", "inform", "respond", "llam", "telefonic", "citas"}
-            )
-        )
-        organization_context = query_terms.intersection(
-            {"empres", "hotel", "clinic", "organiz"}
-        )
-        if reception_context and len(organization_context) >= 2:
-            general_reception = self.frame.index[self.frame["code"].eq("4226.1")]
-            if len(general_reception):
-                reception_family = self.frame["code"].astype(str).str.startswith(
-                    ("4224", "4226", "5131")
-                )
-                general_index = int(general_reception[0])
-                family_best = float(adjusted[reception_family].max())
-                adjusted[general_index] = min(1.0, max(adjusted[general_index], family_best))
-                for index in np.where(reception_family)[0]:
-                    if index != general_index:
-                        adjusted[index] = min(adjusted[index], adjusted[general_index] - 0.001)
-
-        security_context = query_terms.intersection({"proteg", "vigil", "rond", "camar"})
-        if security_context and "acces" in query_terms and len(security_context) >= 2:
-            general_guard = self.frame.index[self.frame["code"].eq("5414.1")]
-            if len(general_guard):
-                guard_family = self.frame["code"].astype(str).str.startswith("5414")
-                general_index = int(general_guard[0])
-                family_best = float(adjusted[guard_family].max())
-                adjusted[general_index] = min(1.0, max(adjusted[general_index], family_best))
-                for index in np.where(guard_family)[0]:
-                    if index != general_index:
-                        adjusted[index] = min(adjusted[index], adjusted[general_index] - 0.001)
-
-        return adjusted
 
     def _evidence(self, description: str, query_tokens: list[str]) -> str:
         query_set = set(query_tokens)
@@ -321,39 +210,14 @@ class EscoMatcher:
             sentence_weights = np.minimum(1.0, sentence_lengths / 8.0)
             sentence_scores *= sentence_weights[:, np.newaxis]
             lexical = 0.4 * lexical + 0.6 * sentence_scores.max(axis=0)
-            lexical = self._prefer_general_roles_for_broad_context(
-                lexical, query_tokens
-            )
         semantic = self._semantic_scores(query)
         if semantic is None:
             combined = lexical
         else:
             candidate_count = min(20, len(lexical))
             candidate_indices = np.argsort(lexical)[::-1][:candidate_count]
-            hybrid = 0.25 * lexical + 0.75 * semantic
             combined = np.full(len(lexical), -1.0, dtype=float)
-            lexical_best = float(lexical.max())
-            lexical_best_index = int(np.argmax(lexical))
-            protected_lexical_codes = {"7212.3", "7231.10", "4226.1", "5414.1"}
-            protected_lexical_winner = (
-                lexical_best >= 0.75
-                and str(self.frame.iloc[lexical_best_index]["code"])
-                in protected_lexical_codes
-            )
-            if protected_lexical_winner:
-                combined[candidate_indices] = np.maximum(
-                    lexical[candidate_indices], hybrid[candidate_indices]
-                )
-                rerank_band = lexical_best - 0.03
-                outside_band = (lexical < rerank_band) & (combined >= 0)
-                combined[outside_band] = np.minimum(
-                    combined[outside_band], rerank_band - 1e-6
-                )
-            else:
-                combined[candidate_indices] = semantic[candidate_indices]
-        combined = self._prefer_general_roles_for_broad_context(
-            combined, query_tokens
-        )
+            combined[candidate_indices] = semantic[candidate_indices]
         ranking = np.argsort(combined)[::-1][:top_k]
 
         hierarchy_columns = [f"grupo{number}" for number in range(1, 9)]
