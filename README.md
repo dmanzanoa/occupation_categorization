@@ -132,6 +132,38 @@ python cli.py "Instalo sistemas eléctricos y reparo averías en edificios"
 python cli.py --semantic "Ayudo a pacientes con ejercicios de rehabilitación"
 ```
 
+## API con FastAPI
+
+También puedes consumir el clasificador vía HTTP:
+
+```bash
+python -m pip install -r requirements.txt
+uvicorn api:app --reload
+```
+
+Documentación interactiva:
+
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- ReDoc: `http://127.0.0.1:8000/redoc`
+
+Ejemplo de consulta `POST /search`:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Instalo y mantengo sistemas eléctricos en edificios",
+    "top_k": 5,
+    "semantic": false
+  }'
+```
+
+También existe `GET /search` con query params:
+
+```bash
+curl "http://127.0.0.1:8000/search?description=Instalo%20y%20reparo%20instalaciones%20electricas&top_k=5&semantic=false"
+```
+
 ## Pruebas
 
 ```bash
@@ -142,6 +174,7 @@ python -m unittest discover -s tests -v
 
 ```text
 .
+├── api.py                    # API 
 ├── app.py                    # Interfaz Streamlit
 ├── cli.py                    # Interfaz de terminal
 ├── data/codes_enriched.json  # ESCO + CIUO-08 + CIUO-08 CL
