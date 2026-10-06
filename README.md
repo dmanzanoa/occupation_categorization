@@ -1,51 +1,50 @@
-# Clasificador de ocupaciones ESCO
+# ESCO Occupation Classifier
 
-Aplicación explicable para relacionar una descripción libre en español con las
-ocupaciones de ESCO. Devuelve el nombre (`preferredLabel_esp`), código, jerarquía,
-descripción y una frase de evidencia con las palabras coincidentes resaltadas.
+An explainable application for matching a free-text Spanish description to ESCO
+occupations. It returns the occupation name (`preferredLabel_esp`), code,
+hierarchy, description, and an evidence sentence with matching words highlighted.
 
-## Enfoque
+## Approach
 
-Este problema es de **recuperación de información / clasificación semántica**. La aplicación ofrece dos modos:
+This is an **information retrieval / semantic classification** problem. The application provides two modes:
 
-- **Léxico (offline):** BM25 sobre etiqueta preferida, etiquetas alternativas y
-  descripción, más cobertura de términos de la consulta y evaluación por frases.
-  Esto evita que el contexto secundario oculte una tarea profesional muy
-  específica. Cada sinónimo se indexa por separado para que una ocupación con
-  muchos nombres alternativos no sea penalizada. No requiere API ni descarga de
-  modelos.
-- **Híbrido:** combina BM25 (35 %) con embeddings multilingües (65 %) usando
-  `paraphrase-multilingual-MiniLM-L12-v2`. Es mejor para expresiones con pocas
-  palabras exactas en común.
+- **Lexical (offline):** BM25 over the preferred label, alternative labels, and
+  description, plus query-term coverage and phrase-level scoring. This prevents
+  secondary context from hiding a very specific professional task. Each synonym
+  is indexed separately so occupations with many alternative names are not
+  penalized. It does not require an API or model downloads.
+- **Hybrid:** combines BM25 (35%) with multilingual embeddings (65%) using
+  `paraphrase-multilingual-MiniLM-L12-v2`. This works better for expressions
+  that share few exact words.
 
-## Requisitos
+## Requirements
 
-- Python 3.10 o superior.
-- El archivo `data/data_oc.csv`, incluido en este repositorio.
+- Python 3.10 or higher.
+- The `data/data_oc.csv` file, included in this repository.
 
-## Instalación y ejecución
+## Installation and Running
 
-Clonar el repositorio y entrar en su carpeta:
+Clone the repository and enter its folder:
 
 ```bash
 git clone https://github.com/dmanzanoa/occupation_categorization.git
 cd occupation_categorization
 ```
 
-Crear y activar un entorno virtual:
+Create and activate a virtual environment:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-En Windows PowerShell, la activación es:
+In Windows PowerShell, activate it with:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-Instalar las dependencias básicas e iniciar la interfaz:
+Install the basic dependencies and start the interface:
 
 ```bash
 python -m pip install --upgrade pip
@@ -53,52 +52,52 @@ python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Streamlit mostrará en la terminal la dirección local, normalmente
+Streamlit will show the local address in the terminal, usually
 `http://localhost:8501`.
 
-### Modo semántico
+### Semantic Mode
 
-El modo básico funciona completamente offline con BM25. Para habilitar la
-recuperación híbrida con embeddings multilingües:
+The basic mode runs fully offline with BM25. To enable hybrid retrieval with
+multilingual embeddings:
 
 ```bash
 python -m pip install -r requirements-semantic.txt
 streamlit run app.py
 ```
 
-La primera activación del interruptor **Usar modelo semántico** descarga el modelo.
-Después queda en la caché local.
+The first time you enable the **Use semantic model** toggle, the model is
+downloaded. After that, it remains in the local cache.
 
-## Interfaz de terminal
+## Command-Line Interface
 
-También se puede consultar el sistema sin Streamlit:
+You can also query the system without Streamlit:
 
 ```bash
 python cli.py "Instalo sistemas eléctricos y reparo averías en edificios"
 python cli.py --semantic "Ayudo a pacientes con ejercicios de rehabilitación"
 ```
 
-## Pruebas
+## Tests
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-## Estructura
+## Structure
 
 ```text
 .
-├── app.py                    # Interfaz Streamlit
-├── cli.py                    # Interfaz de terminal
-├── data/data_oc.csv          # Catálogo de ocupaciones ESCO
-├── src/esco_matcher/         # Carga, normalización y ranking
-└── tests/                    # Pruebas de regresión
+├── app.py                    # Streamlit interface
+├── cli.py                    # Command-line interface
+├── data/data_oc.csv          # ESCO occupation catalog
+├── src/esco_matcher/         # Loading, normalization, and ranking
+└── tests/                    # Regression tests
 ```
 
-## Limitaciones
+## Limitations
 
-Este proyecto recupera candidatos para homologación ocupacional. Los puntajes
-sirven para ordenar resultados, pero no son probabilidades calibradas. Cuando
-varias ocupaciones sean similares, deben presentarse los primeros candidatos y
-solicitar información adicional en lugar de asumir que el primer resultado es
-definitivo.
+This project retrieves candidates for occupational matching. Scores are useful
+for ranking results, but they are not calibrated probabilities. When several
+occupations are similar, the top candidates should be presented and additional
+information should be requested instead of assuming the first result is
+definitive.
